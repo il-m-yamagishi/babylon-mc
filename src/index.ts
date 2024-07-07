@@ -18,7 +18,7 @@ import {
 } from "pure-rand";
 import McNormalTexture from "./assets/babylon-mc-normal.png";
 import McTexture from "./assets/babylon-mc-texture.png";
-import { noise2ImproveX, noise3ImprovedXZ } from "./util/simplexNoise2S";
+import { noise2ImproveX } from "./util/simplexNoise2S";
 
 async function main() {
   const canvas = document.getElementById(
@@ -67,9 +67,9 @@ async function main() {
   skyBox.infiniteDistance = true;
   skyBox.material = skyMaterial;
 
-  const mesh = new Mesh("Top", scene);
-  const rng = xoroshiro128plus(100);
-  const vertexData = createFacetVertexData(rng);
+  const mesh = new Mesh("Boxel", scene);
+  const seed = 100;
+  const vertexData = createFacetVertexData(seed);
   vertexData.applyToMesh(mesh);
   const mat = new StandardMaterial("mat", scene);
   mat.diffuseTexture = new Texture(McTexture, scene, {
@@ -80,7 +80,6 @@ async function main() {
   });
   mat.specularColor = new Color3(0, 0, 0);
   mesh.material = mat;
-  mesh.applyFog = true;
 
   const pipeline = new DefaultRenderingPipeline("pipeline", true, scene, [
     camera,
@@ -110,37 +109,40 @@ async function main() {
 
 main();
 
-function createFacetVertexData(rng: RandomGenerator) {
+function createFacetVertexData(seed: number) {
+  const rng = xoroshiro128plus(seed);
+  const seedBigInt = BigInt(seed);
   const size = 0.5;
-  const tile = 128;
-  const offset = size * tile * 0.5;
-  const textureSize = 16;
-  const jitter = 1 / 256;
+  const tileSize = 128;
+  const height = 10;
+  const offset = size * tileSize * 0.5;
   const vertexData = new VertexData();
-  const positions = [];
-  const indices = [];
-  const normals = [];
-  const uvs = [];
+  const positions: number[] = [];
+  const indices: number[] = [];
+  const normals: number[] = [];
+  const uvs: number[] = [];
+  let indexBase = 0;
 
-  for (let x = 0; x < tile; x++) {
-    for (let z = 0; z < tile; z++) {
+  for (let x = 0; x < tileSize; x++) {
+    for (let z = 0; z < tileSize; z++) {
       const textureId = unsafeUniformIntDistribution(0, 1, rng);
-      const y = Math.floor(noise2ImproveX(100n, x / tile, z / tile) * 10) * 0.5;
+      const y = Math.floor(
+        noise2ImproveX(seedBigInt, x / tileSize, z / tileSize) * height,
+      );
       positions.push(
         x * size - offset,
-        y,
+        y * size,
         z * size - offset,
         x * size + size - offset,
-        y,
+        y * size,
         z * size + size - offset,
         x * size - offset,
-        y,
+        y * size,
         z * size + size - offset,
         x * size + size - offset,
-        y,
+        y * size,
         z * size - offset,
       );
-      const indexBase = x * tile * 4 + z * 4;
       indices.push(
         indexBase,
         indexBase + 1,
@@ -149,30 +151,132 @@ function createFacetVertexData(rng: RandomGenerator) {
         indexBase + 3,
         indexBase + 1,
       );
+      indexBase += 4;
       normals.push(0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0);
-      const u0 = 0 + (textureId % textureSize) / textureSize + jitter;
-      const u1 = 0 + (1 + (textureId % textureSize)) / textureSize - jitter;
-      const v0 = 1 - Math.floor(textureId / textureSize) / textureSize - jitter;
-      const v1 =
-        1 - Math.floor(1 + textureId / textureSize) / textureSize + jitter;
-      const randomUv = unsafeUniformIntDistribution(0, 3, rng);
-      switch (randomUv) {
-        case 0: {
-          uvs.push(u0, v0, u1, v1, u1, v0, u0, v1);
-          break;
-        }
-        case 1: {
-          uvs.push(u1, v1, u1, v0, u0, v1, u0, v0);
-          break;
-        }
-        case 2: {
-          uvs.push(u1, v0, u0, v1, u0, v0, u1, v1);
-          break;
-        }
-        case 3: {
-          uvs.push(u0, v1, u0, v0, u1, v1, u1, v0);
-          break;
-        }
+      uvs.push(...generateUV(textureId, rng));
+      const XPlusY = Math.floor(
+        noise2ImproveX(seedBigInt, (x + 1) / tileSize, z / tileSize) * height,
+      );
+      if (XPlusY < y) {
+        // render X+
+        positions.push(
+          x * size + size - offset,
+          y * size - size,
+          z * size - offset,
+          x * size + size - offset,
+          y * size,
+          z * size + size - offset,
+          x * size + size - offset,
+          y * size,
+          z * size - offset,
+          x * size + size - offset,
+          y * size - size,
+          z * size + size - offset,
+        );
+        indices.push(
+          indexBase,
+          indexBase + 1,
+          indexBase + 2,
+          indexBase,
+          indexBase + 3,
+          indexBase + 1,
+        );
+        indexBase += 4;
+        normals.push(1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0);
+        uvs.push(...generateUV(textureId, rng));
+      }
+      const XMinusY = Math.floor(
+        noise2ImproveX(seedBigInt, (x - 1) / tileSize, z / tileSize) * height,
+      );
+      if (XMinusY < y) {
+        // render X-
+        positions.push(
+          x * size - offset,
+          y * size,
+          z * size - offset,
+          x * size - offset,
+          y * size - size,
+          z * size + size - offset,
+          x * size - offset,
+          y * size - size,
+          z * size - offset,
+          x * size - offset,
+          y * size,
+          z * size + size - offset,
+        );
+        indices.push(
+          indexBase,
+          indexBase + 1,
+          indexBase + 2,
+          indexBase,
+          indexBase + 3,
+          indexBase + 1,
+        );
+        indexBase += 4;
+        normals.push(-1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0);
+        uvs.push(...generateUV(textureId, rng));
+      }
+      const ZPlusY = Math.floor(
+        noise2ImproveX(seedBigInt, x / tileSize, (z + 1) / tileSize) * height,
+      );
+      if (ZPlusY < y) {
+        // render Z+
+        positions.push(
+          x * size - offset,
+          y * size - size,
+          z * size + size - offset,
+          x * size + size - offset,
+          y * size,
+          z * size + size - offset,
+          x * size + size - offset,
+          y * size - size,
+          z * size + size - offset,
+          x * size - offset,
+          y * size,
+          z * size + size - offset,
+        );
+        indices.push(
+          indexBase,
+          indexBase + 1,
+          indexBase + 2,
+          indexBase,
+          indexBase + 3,
+          indexBase + 1,
+        );
+        indexBase += 4;
+        normals.push(0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1);
+        uvs.push(...generateUV(textureId, rng));
+      }
+      const ZMinusY = Math.floor(
+        noise2ImproveX(seedBigInt, x / tileSize, (z - 1) / tileSize) * height,
+      );
+      if (ZMinusY < y) {
+        // render Z-
+        positions.push(
+          x * size - offset,
+          y * size,
+          z * size - offset,
+          x * size + size - offset,
+          y * size - size,
+          z * size - offset,
+          x * size + size - offset,
+          y * size,
+          z * size - offset,
+          x * size - offset,
+          y * size - size,
+          z * size - offset,
+        );
+        indices.push(
+          indexBase,
+          indexBase + 1,
+          indexBase + 2,
+          indexBase,
+          indexBase + 3,
+          indexBase + 1,
+        );
+        indexBase += 4;
+        normals.push(0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1);
+        uvs.push(...generateUV(textureId, rng));
       }
     }
   }
@@ -183,4 +287,31 @@ function createFacetVertexData(rng: RandomGenerator) {
   vertexData.uvs = uvs;
 
   return vertexData;
+}
+
+function generateUV(textureId: number, rng: RandomGenerator): number[] {
+  const textureSize = 16;
+  const jitter = 1 / 256;
+  const u0 = 0 + (textureId % textureSize) / textureSize + jitter;
+  const u1 = 0 + (1 + (textureId % textureSize)) / textureSize - jitter;
+  const v0 = 1 - Math.floor(textureId / textureSize) / textureSize - jitter;
+  const v1 = 1 - Math.floor(1 + textureId / textureSize) / textureSize + jitter;
+  const randomUv = unsafeUniformIntDistribution(0, 3, rng);
+  switch (randomUv) {
+    case 0: {
+      return [u0, v0, u1, v1, u1, v0, u0, v1];
+    }
+    case 1: {
+      return [u1, v1, u1, v0, u0, v1, u0, v0];
+    }
+    case 2: {
+      return [u1, v0, u0, v1, u0, v0, u1, v1];
+    }
+    case 3: {
+      return [u0, v1, u0, v0, u1, v1, u1, v0];
+    }
+    default: {
+      throw new Error("Invalid randomUv value");
+    }
+  }
 }
