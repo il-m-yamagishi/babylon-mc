@@ -1,3 +1,4 @@
+import { DefaultRenderingPipeline } from "@babylonjs/core";
 import { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
@@ -11,8 +12,8 @@ import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { Scene } from "@babylonjs/core/scene";
 import { SkyMaterial } from "@babylonjs/materials/sky";
-import McTexture from "./assets/babylon-mc-texture.png";
 import McNormalTexture from "./assets/babylon-mc-normal.png";
+import McTexture from "./assets/babylon-mc-texture.png";
 
 async function main() {
   const canvas = document.getElementById(
@@ -39,7 +40,7 @@ async function main() {
     useGeometryUniqueIdsMap: true,
     useMaterialMeshMap: true,
   });
-  const camera = new ArcRotateCamera("Camera", 0, 0, 5, Vector3.Zero(), scene);
+  const camera = new ArcRotateCamera("Camera", 0, 1, 5, Vector3.Up(), scene);
   camera.attachControl(true);
   const light = new DirectionalLight(
     "SunLight",
@@ -56,6 +57,7 @@ async function main() {
   skyMaterial.mieDirectionalG = 0.95;
   skyMaterial.rayleigh = 6;
   skyMaterial.turbidity = 22;
+  skyMaterial.fogEnabled = false;
   const skyBox = MeshBuilder.CreateBox("SkyBox", { size: 1000 }, scene);
   skyBox.infiniteDistance = true;
   skyBox.material = skyMaterial;
@@ -65,13 +67,30 @@ async function main() {
   vertexData.applyToMesh(mesh);
   const mat = new StandardMaterial("mat", scene);
   mat.diffuseTexture = new Texture(McTexture, scene, {
-    // samplingMode: Texture.NEAREST_SAMPLINGMODE,
+    samplingMode: Texture.TRILINEAR_SAMPLINGMODE,
   });
   mat.bumpTexture = new Texture(McNormalTexture, scene, {
-    // samplingMode: Texture.NEAREST_SAMPLINGMODE,
+    samplingMode: Texture.TRILINEAR_SAMPLINGMODE,
   });
   mat.specularColor = new Color3(0, 0, 0);
   mesh.material = mat;
+  mesh.applyFog = true;
+
+  const pipeline = new DefaultRenderingPipeline("pipeline", true, scene, [
+    camera,
+  ]);
+  if (pipeline.isSupported) {
+    pipeline.bloomEnabled = true;
+    // pipeline.chromaticAberrationEnabled = true;
+    // pipeline.depthOfFieldEnabled = true;
+    pipeline.fxaaEnabled = true;
+    pipeline.glowLayerEnabled = true;
+    pipeline.grainEnabled = true;
+    pipeline.grain.intensity = 5;
+    pipeline.sharpenEnabled = true;
+  }
+  scene.fogMode = Scene.FOGMODE_EXP2;
+  scene.fogDensity = 0.05;
 
   function render() {
     scene.render();
@@ -88,8 +107,9 @@ main();
 function createFacetVertexData() {
   const size = 0.5;
   const tile = 128;
+  const offset = size * tile * 0.5;
   const textureSize = 16;
-  const jitter = 1 / 128;
+  const jitter = 1 / 256;
   const vertexData = new VertexData();
   const positions = [];
   const indices = [];
@@ -100,18 +120,18 @@ function createFacetVertexData() {
     for (let z = 0; z < tile; z++) {
       const textureId = Math.floor(Math.random() * 2);
       positions.push(
-        x * size,
+        x * size - offset,
         0,
-        z * size,
-        x * size + size,
+        z * size - offset,
+        x * size + size - offset,
         0,
-        z * size + size,
-        x * size,
+        z * size + size - offset,
+        x * size - offset,
         0,
-        z * size + size,
-        x * size + size,
+        z * size + size - offset,
+        x * size + size - offset,
         0,
-        z * size,
+        z * size - offset,
       );
       const indexBase = x * tile * 4 + z * 4;
       indices.push(
@@ -128,7 +148,25 @@ function createFacetVertexData() {
       const v0 = 1 - Math.floor(textureId / textureSize) / textureSize - jitter;
       const v1 =
         1 - Math.floor(1 + textureId / textureSize) / textureSize + jitter;
-      uvs.push(u0, v0, u1, v1, u1, v0, u0, v1);
+      const randomUv = Math.floor(Math.random() * 4);
+      switch (randomUv) {
+        case 0: {
+          uvs.push(u0, v0, u1, v1, u1, v0, u0, v1);
+          break;
+        }
+        case 1: {
+          uvs.push(u1, v1, u1, v0, u0, v1, u0, v0);
+          break;
+        }
+        case 2: {
+          uvs.push(u1, v0, u0, v1, u0, v0, u1, v1);
+          break;
+        }
+        case 3: {
+          uvs.push(u0, v1, u0, v0, u1, v1, u1, v0);
+          break;
+        }
+      }
     }
   }
 
