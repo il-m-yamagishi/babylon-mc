@@ -11,7 +11,8 @@ import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { Scene } from "@babylonjs/core/scene";
 import { SkyMaterial } from "@babylonjs/materials/sky";
-import McTexture from "./assets/babylon-mc-texture.gif";
+import McTexture from "./assets/babylon-mc-texture.png";
+import McNormalTexture from "./assets/babylon-mc-normal.png";
 
 async function main() {
   const canvas = document.getElementById(
@@ -40,7 +41,11 @@ async function main() {
   });
   const camera = new ArcRotateCamera("Camera", 0, 0, 5, Vector3.Zero(), scene);
   camera.attachControl(true);
-  const light = new DirectionalLight("SunLight", new Vector3(0, -1, 0), scene);
+  const light = new DirectionalLight(
+    "SunLight",
+    new Vector3(0, -0.67, 0.34),
+    scene,
+  );
   light.intensity = 1;
   const skyMaterial = new SkyMaterial("SkyMaterial", scene);
   skyMaterial.backFaceCulling = false;
@@ -60,7 +65,10 @@ async function main() {
   vertexData.applyToMesh(mesh);
   const mat = new StandardMaterial("mat", scene);
   mat.diffuseTexture = new Texture(McTexture, scene, {
-    samplingMode: Texture.NEAREST_SAMPLINGMODE,
+    // samplingMode: Texture.NEAREST_SAMPLINGMODE,
+  });
+  mat.bumpTexture = new Texture(McNormalTexture, scene, {
+    // samplingMode: Texture.NEAREST_SAMPLINGMODE,
   });
   mat.specularColor = new Color3(0, 0, 0);
   mesh.material = mat;
@@ -77,18 +85,57 @@ async function main() {
 
 main();
 
-function createFacetVertexData(textureId = 2) {
-  const vertexData = new VertexData();
-  vertexData.positions = [0, 0, 0, 1, 0, 1, 0, 0, 1, 1, 0, 0];
-  vertexData.indices = [0, 1, 2, 0, 3, 1];
-  vertexData.normals = [0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0];
+function createFacetVertexData() {
+  const size = 0.5;
+  const tile = 128;
   const textureSize = 16;
-  const jitter = 1 / 2048;
-  const u0 = 0 + (textureId % textureSize) / textureSize + jitter;
-  const u1 = 0 + (1 + (textureId % textureSize)) / textureSize - jitter;
-  const v0 = 1 - Math.floor(textureId / textureSize) / textureSize - jitter;
-  const v1 = 1 - Math.floor(1 + textureId / textureSize) / textureSize + jitter;
-  vertexData.uvs = [u0, v0, u1, v1, u1, v0, u1, v0];
+  const jitter = 1 / 128;
+  const vertexData = new VertexData();
+  const positions = [];
+  const indices = [];
+  const normals = [];
+  const uvs = [];
+
+  for (let x = 0; x < tile; x++) {
+    for (let z = 0; z < tile; z++) {
+      const textureId = Math.floor(Math.random() * 2);
+      positions.push(
+        x * size,
+        0,
+        z * size,
+        x * size + size,
+        0,
+        z * size + size,
+        x * size,
+        0,
+        z * size + size,
+        x * size + size,
+        0,
+        z * size,
+      );
+      const indexBase = x * tile * 4 + z * 4;
+      indices.push(
+        indexBase,
+        indexBase + 1,
+        indexBase + 2,
+        indexBase,
+        indexBase + 3,
+        indexBase + 1,
+      );
+      normals.push(0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0);
+      const u0 = 0 + (textureId % textureSize) / textureSize + jitter;
+      const u1 = 0 + (1 + (textureId % textureSize)) / textureSize - jitter;
+      const v0 = 1 - Math.floor(textureId / textureSize) / textureSize - jitter;
+      const v1 =
+        1 - Math.floor(1 + textureId / textureSize) / textureSize + jitter;
+      uvs.push(u0, v0, u1, v1, u1, v0, u0, v1);
+    }
+  }
+
+  vertexData.positions = positions;
+  vertexData.indices = indices;
+  vertexData.normals = normals;
+  vertexData.uvs = uvs;
 
   return vertexData;
 }
