@@ -11,6 +11,11 @@ import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { Scene } from "@babylonjs/core/scene";
 import { SkyMaterial } from "@babylonjs/materials/sky";
+import {
+  type RandomGenerator,
+  unsafeUniformIntDistribution,
+  xoroshiro128plus,
+} from "pure-rand";
 import McNormalTexture from "./assets/babylon-mc-normal.png";
 import McTexture from "./assets/babylon-mc-texture.png";
 
@@ -62,7 +67,8 @@ async function main() {
   skyBox.material = skyMaterial;
 
   const mesh = new Mesh("Top", scene);
-  const vertexData = createFacetVertexData();
+  const rng = xoroshiro128plus(100);
+  const vertexData = createFacetVertexData(rng);
   vertexData.applyToMesh(mesh);
   const mat = new StandardMaterial("mat", scene);
   mat.diffuseTexture = new Texture(McTexture, scene, {
@@ -103,7 +109,7 @@ async function main() {
 
 main();
 
-function createFacetVertexData() {
+function createFacetVertexData(rng: RandomGenerator) {
   const size = 0.5;
   const tile = 128;
   const offset = size * tile * 0.5;
@@ -117,7 +123,7 @@ function createFacetVertexData() {
 
   for (let x = 0; x < tile; x++) {
     for (let z = 0; z < tile; z++) {
-      const textureId = Math.floor(Math.random() * 2);
+      const textureId = unsafeUniformIntDistribution(0, 1, rng);
       positions.push(
         x * size - offset,
         0,
@@ -147,7 +153,7 @@ function createFacetVertexData() {
       const v0 = 1 - Math.floor(textureId / textureSize) / textureSize - jitter;
       const v1 =
         1 - Math.floor(1 + textureId / textureSize) / textureSize + jitter;
-      const randomUv = Math.floor(Math.random() * 4);
+      const randomUv = unsafeUniformIntDistribution(0, 3, rng);
       switch (randomUv) {
         case 0: {
           uvs.push(u0, v0, u1, v1, u1, v0, u0, v1);

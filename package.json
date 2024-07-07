@@ -10,7 +10,8 @@
   },
   "dependencies": {
     "@babylonjs/core": "^7.14.0",
-    "@babylonjs/materials": "^7.14.0"
+    "@babylonjs/materials": "^7.14.0",
+    "pure-rand": "^6.1.0"
   },
   "devDependencies": {
     "@biomejs/biome": "1.8.3",
