@@ -18,6 +18,7 @@ import {
 } from "pure-rand";
 import McNormalTexture from "./assets/babylon-mc-normal.png";
 import McTexture from "./assets/babylon-mc-texture.png";
+import { noise2ImproveX, noise3ImprovedXZ } from "./util/simplexNoise2S";
 
 async function main() {
   const canvas = document.getElementById(
@@ -124,18 +125,19 @@ function createFacetVertexData(rng: RandomGenerator) {
   for (let x = 0; x < tile; x++) {
     for (let z = 0; z < tile; z++) {
       const textureId = unsafeUniformIntDistribution(0, 1, rng);
+      const y = Math.floor(noise2ImproveX(100n, x / tile, z / tile) * 10) * 0.5;
       positions.push(
         x * size - offset,
-        0,
+        y,
         z * size - offset,
         x * size + size - offset,
-        0,
+        y,
         z * size + size - offset,
         x * size - offset,
-        0,
+        y,
         z * size + size - offset,
         x * size + size - offset,
-        0,
+        y,
         z * size - offset,
       );
       const indexBase = x * tile * 4 + z * 4;
