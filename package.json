@@ -6,7 +6,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "ci": "biome ci"
+    "ci": "biome ci src"
   },
   "dependencies": {
     "@babylonjs/core": "^7.14.0",
