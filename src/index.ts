@@ -1,4 +1,3 @@
-import { DefaultRenderingPipeline } from "@babylonjs/core";
 import { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
@@ -9,6 +8,10 @@ import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
+import { DefaultRenderingPipeline } from "@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/defaultRenderingPipeline";
+import { SSAO2RenderingPipeline } from "@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/ssao2RenderingPipeline";
+import "@babylonjs/core/Rendering/geometryBufferRendererSceneComponent";
+import "@babylonjs/core/Rendering/prePassRendererSceneComponent";
 import { Scene } from "@babylonjs/core/scene";
 import { SkyMaterial } from "@babylonjs/materials/sky";
 import {
@@ -94,6 +97,13 @@ async function main() {
     pipeline.grain.intensity = 5;
     pipeline.sharpenEnabled = true;
   }
+  const ssaoPipeline = new SSAO2RenderingPipeline(
+    "ssao2Pipeline",
+    scene,
+    0.85,
+    [camera],
+  );
+  ssaoPipeline.maxZ = 500;
   scene.fogMode = Scene.FOGMODE_EXP2;
   scene.fogDensity = 0.05;
 
