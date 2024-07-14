@@ -1,6 +1,7 @@
-import { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
+import { UniversalCamera } from "@babylonjs/core";
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
+import "@babylonjs/core/Loading/loadingScreen";
 import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
@@ -18,7 +19,6 @@ import { type RandomGenerator, unsafeUniformIntDistribution, xoroshiro128plus } 
 import McNormalTexture from "./assets/babylon-mc-normal.png";
 import McTexture from "./assets/babylon-mc-texture.png";
 import { noise2ImproveX } from "./util/simplexNoise2S";
-import { buildSuperFlatWorld } from "./worlds/world";
 
 async function main() {
   const canvas = document.getElementById("render-canvas") as HTMLCanvasElement | null;
@@ -26,28 +26,69 @@ async function main() {
     throw new Error("Canvas not found");
   }
 
-  const engine = new Engine(
-    canvas,
-    true,
-    {
-      adaptToDeviceRatio: true,
-      alpha: false,
-      antialias: true,
-      audioEngine: true,
-      xrCompatible: false,
-    },
-    true,
-  );
-  const scene = new Scene(engine, {
-    useClonedMeshMap: true,
-    useGeometryUniqueIdsMap: true,
-    useMaterialMeshMap: true,
-  });
-  const camera = new ArcRotateCamera("Camera", 0, 1, 5, Vector3.Up(), scene);
-  camera.attachControl(true);
-  camera.maxZ = 1024;
+  const engine = new Engine(canvas, true, {}, true);
+  engine.displayLoadingUI();
+  const scene = new Scene(engine);
+  // scene.fogMode = Scene.FOGMODE_EXP2;
+  // scene.fogDensity = 0.015;
+  // scene.gravity = new Vector3(0, -0.871, 0);
+
   const light = new DirectionalLight("SunLight", new Vector3(0, -0.67, 0.34), scene);
   light.intensity = 1;
+
+  createCamera(scene);
+  createRenderingPipelines(scene);
+  createSky(scene);
+  await createVoxelWorld(scene);
+
+  function render() {
+    scene.render();
+  }
+  function resize() {
+    engine.resize();
+  }
+  window.addEventListener("resize", resize);
+  engine.runRenderLoop(render);
+  engine.hideLoadingUI();
+}
+
+main();
+
+function createCamera(scene: Scene): void {
+  const camera = new UniversalCamera("Camera", new Vector3(0, 2, 0), scene);
+  camera.attachControl(true);
+  camera.maxZ = 1024;
+  camera.keysLeft = ["A".charCodeAt(0)];
+  camera.keysRight = ["D".charCodeAt(0)];
+  camera.keysUp = ["W".charCodeAt(0)];
+  camera.keysDown = ["S".charCodeAt(0)];
+  camera.speed = 0.2;
+  scene.onBeforeRenderObservable.add(() => {
+    if (camera.position.y < -10) {
+      // Reset camera position
+      camera.position = new Vector3(0, 2, 0);
+    }
+  });
+}
+
+function createRenderingPipelines(scene: Scene): void {
+  const pipeline = new DefaultRenderingPipeline("pipeline", true, scene, scene.cameras);
+  if (pipeline.isSupported) {
+    pipeline.bloomEnabled = true;
+    // pipeline.chromaticAberrationEnabled = true;
+    // pipeline.depthOfFieldEnabled = true;
+    pipeline.fxaaEnabled = true;
+    pipeline.glowLayerEnabled = true;
+    pipeline.grainEnabled = true;
+    pipeline.grain.intensity = 5;
+    pipeline.sharpenEnabled = true;
+  }
+  const ssaoRatio = 0.85;
+  const ssaoPipeline = new SSAO2RenderingPipeline("ssao2Pipeline", scene, ssaoRatio, scene.cameras);
+  ssaoPipeline.maxZ = 1024;
+}
+
+function createSky(scene: Scene) {
   const skyMaterial = new SkyMaterial("SkyMaterial", scene);
   skyMaterial.backFaceCulling = false;
   skyMaterial.azimuth = 0.5;
@@ -61,53 +102,24 @@ async function main() {
   const skyBox = MeshBuilder.CreateBox("SkyBox", { size: 1000 }, scene);
   skyBox.infiniteDistance = true;
   skyBox.material = skyMaterial;
+}
 
+function createVoxelWorld(scene: Scene) {
   const mesh = new Mesh("Voxel", scene);
-  const world = buildSuperFlatWorld();
-  const rawData = await world.build();
-  const vertexData = new VertexData();
-  vertexData.positions = rawData.positions;
-  vertexData.indices = rawData.indices;
-  vertexData.normals = rawData.normals;
-  vertexData.uvs = rawData.uvs;
-  vertexData.applyToMesh(mesh);
+  createFacetVertexData(0).applyToMesh(mesh);
   const mat = new StandardMaterial("mat", scene);
+  mat.useLogarithmicDepth = true;
   mat.diffuseTexture = new Texture(McTexture, scene, {
+    noMipmap: false,
     samplingMode: Texture.TRILINEAR_SAMPLINGMODE,
   });
   mat.bumpTexture = new Texture(McNormalTexture, scene, {
+    noMipmap: false,
     samplingMode: Texture.TRILINEAR_SAMPLINGMODE,
   });
   mat.specularColor = new Color3(0, 0, 0);
   mesh.material = mat;
-
-  const pipeline = new DefaultRenderingPipeline("pipeline", true, scene, [camera]);
-  if (pipeline.isSupported) {
-    pipeline.bloomEnabled = true;
-    // pipeline.chromaticAberrationEnabled = true;
-    // pipeline.depthOfFieldEnabled = true;
-    pipeline.fxaaEnabled = true;
-    pipeline.glowLayerEnabled = true;
-    pipeline.grainEnabled = true;
-    pipeline.grain.intensity = 5;
-    pipeline.sharpenEnabled = true;
-  }
-  const ssaoPipeline = new SSAO2RenderingPipeline("ssao2Pipeline", scene, 0.85, [camera]);
-  ssaoPipeline.maxZ = 1024;
-  scene.fogMode = Scene.FOGMODE_EXP2;
-  scene.fogDensity = 0.015;
-
-  function render() {
-    scene.render();
-  }
-  function resize() {
-    engine.resize();
-  }
-  window.addEventListener("resize", resize);
-  engine.runRenderLoop(render);
 }
-
-main();
 
 function createFacetVertexData(seed: number) {
   const rng = xoroshiro128plus(seed);
@@ -250,7 +262,7 @@ function generateUV(textureId: number, rng: RandomGenerator): number[] {
 
 function generateUV2(textureId: number, rotation: number): number[] {
   const textureSize = 16;
-  const jitter = 1 / 256;
+  const jitter = 0 / 16;
   const u0 = 0 + (textureId % textureSize) / textureSize + jitter;
   const u1 = 0 + (1 + (textureId % textureSize)) / textureSize - jitter;
   const v0 = 1 - Math.floor(textureId / textureSize) / textureSize - jitter;
