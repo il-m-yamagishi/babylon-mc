@@ -39,7 +39,7 @@ async function main() {
   createCamera(scene);
   createRenderingPipelines(scene);
   createSky(scene);
-  await createVoxelWorld(scene);
+  createVoxelWorld(scene);
 
   function render() {
     scene.render();

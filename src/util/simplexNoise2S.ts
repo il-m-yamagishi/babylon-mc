@@ -368,10 +368,7 @@ class LatticeVertex4D {
   }
 }
 
-const [LOOKUP_4D_A, LOOKUP_4D_B] = ((): [
-  SecondaryIndexes[],
-  LatticeVertex4D[],
-] => {
+const [LOOKUP_4D_A, LOOKUP_4D_B] = ((): [SecondaryIndexes[], LatticeVertex4D[]] => {
   // biome-ignore format: This array was copied.
   const lookup4dVertexCodes: Int[][] = [
     [ 0x15, 0x45, 0x51, 0x54, 0x55, 0x56, 0x59, 0x5A, 0x65, 0x66, 0x69, 0x6A, 0x95, 0x96, 0x99, 0x9A, 0xA5, 0xA6, 0xA9, 0xAA ],
@@ -656,13 +653,7 @@ const [LOOKUP_4D_A, LOOKUP_4D_B] = ((): [
   return [lookup4da, lookup4db];
 })();
 
-function grad2(
-  seed: Long,
-  xsvp: Long,
-  ysvp: Long,
-  dx: Float,
-  dy: Float,
-): Float {
+function grad2(seed: Long, xsvp: Long, ysvp: Long, dx: Float, dy: Float): Float {
   let hash = seed ^ xsvp ^ ysvp;
   hash *= HASH_MULTIPLIER;
   hash ^= hash >> (64n - BigInt(N_GRADS_2D_EXPONENT) + 1n);
@@ -670,24 +661,12 @@ function grad2(
   return GRADIENTS_2D[gi | 0] * dx + GRADIENTS_2D[gi | 1] * dy;
 }
 
-function grad3(
-  seed: Long,
-  xsvp: Long,
-  ysvp: Long,
-  zsvp: Long,
-  dx: Float,
-  dy: Float,
-  dz: Float,
-): Float {
+function grad3(seed: Long, xsvp: Long, ysvp: Long, zsvp: Long, dx: Float, dy: Float, dz: Float): Float {
   let hash = seed ^ xsvp ^ (ysvp ^ zsvp);
   hash *= HASH_MULTIPLIER;
   hash ^= hash >> (64n - BigInt(N_GRADS_3D_EXPONENT) + 2n);
   const gi = Number(hash) & ((N_GRADS_3D - 1) << 2);
-  return (
-    GRADIENTS_3D[gi | 0] * dx +
-    GRADIENTS_3D[gi | 1] * dy +
-    GRADIENTS_3D[gi | 2] * dz
-  );
+  return GRADIENTS_3D[gi | 0] * dx + GRADIENTS_3D[gi | 1] * dy + GRADIENTS_3D[gi | 2] * dz;
 }
 
 function grad4(
@@ -706,9 +685,7 @@ function grad4(
   hash ^= hash >> (64n - BigInt(N_GRADS_4D_EXPONENT) + 2n);
   const gi = Number(hash) & ((N_GRADS_4D - 1) << 2);
   return (
-    GRADIENTS_4D[gi | 0] * dx +
-    GRADIENTS_4D[gi | 1] * dy +
-    (GRADIENTS_4D[gi | 2] * dz + GRADIENTS_4D[gi | 3] * dw)
+    GRADIENTS_4D[gi | 0] * dx + GRADIENTS_4D[gi | 1] * dy + (GRADIENTS_4D[gi | 2] * dz + GRADIENTS_4D[gi | 3] * dw)
   );
 }
 
@@ -770,12 +747,10 @@ function noise2UnskewedBase(seed: Long, xs: Double, ys: Double): Float {
 
   // Second vertex.
   const a1: Float =
-    2 * (1 + 2 * UNSKEW_2D) * (1 / UNSKEW_2D + 2) * t +
-    (-2 * (1 + 2 * UNSKEW_2D) * (1 + 2 * UNSKEW_2D) + a0);
+    2 * (1 + 2 * UNSKEW_2D) * (1 / UNSKEW_2D + 2) * t + (-2 * (1 + 2 * UNSKEW_2D) * (1 + 2 * UNSKEW_2D) + a0);
   const dx1: Float = dx0 - (1 + 2 * UNSKEW_2D);
   const dy1: Float = dy0 - (1 + 2 * UNSKEW_2D);
-  value +=
-    a1 * a1 * (a1 * a1) * grad2(seed, xsbp + PRIME_X, ysbp + PRIME_Y, dx1, dy1);
+  value += a1 * a1 * (a1 * a1) * grad2(seed, xsbp + PRIME_X, ysbp + PRIME_Y, dx1, dy1);
 
   // Third and fourth vertices.
   // Nested conditionals were faster than compact bit logic/arithmetic.
@@ -786,19 +761,14 @@ function noise2UnskewedBase(seed: Long, xs: Double, ys: Double): Float {
       const dy2: Float = dy0 - (3 * UNSKEW_2D + 1);
       const a2: Float = RSQUARED_2D - dx2 * dx2 - dy2 * dy2;
       if (a2 > 0) {
-        value +=
-          a2 *
-          a2 *
-          (a2 * a2) *
-          grad2(seed, xsbp + (PRIME_X << 1n), ysbp + PRIME_Y, dx2, dy2);
+        value += a2 * a2 * (a2 * a2) * grad2(seed, xsbp + (PRIME_X << 1n), ysbp + PRIME_Y, dx2, dy2);
       }
     } else {
       const dx2: Float = dx0 - UNSKEW_2D;
       const dy2: Float = dy0 - (UNSKEW_2D + 1);
       const a2: Float = RSQUARED_2D - dx2 * dx2 - dy2 * dy2;
       if (a2 > 0) {
-        value +=
-          a2 * a2 * (a2 * a2) * grad2(seed, xsbp, ysbp + PRIME_Y, dx2, dy2);
+        value += a2 * a2 * (a2 * a2) * grad2(seed, xsbp, ysbp + PRIME_Y, dx2, dy2);
       }
     }
 
@@ -807,19 +777,14 @@ function noise2UnskewedBase(seed: Long, xs: Double, ys: Double): Float {
       const dy3: Float = dy0 - (3 * UNSKEW_2D + 2);
       const a3: Float = RSQUARED_2D - dx3 * dx3 - dy3 * dy3;
       if (a3 > 0) {
-        value +=
-          a3 *
-          a3 *
-          (a3 * a3) *
-          grad2(seed, xsbp + PRIME_X, ysbp + (PRIME_Y << 1n), dx3, dy3);
+        value += a3 * a3 * (a3 * a3) * grad2(seed, xsbp + PRIME_X, ysbp + (PRIME_Y << 1n), dx3, dy3);
       }
     } else {
       const dx3: Float = dx0 - (UNSKEW_2D + 1);
       const dy3: Float = dy0 - UNSKEW_2D;
       const a3: Float = RSQUARED_2D - dx3 * dx3 - dy3 * dy3;
       if (a3 > 0) {
-        value +=
-          a3 * a3 * (a3 * a3) * grad2(seed, xsbp + PRIME_X, ysbp, dx3, dy3);
+        value += a3 * a3 * (a3 * a3) * grad2(seed, xsbp + PRIME_X, ysbp, dx3, dy3);
       }
     }
   } else {
@@ -829,16 +794,14 @@ function noise2UnskewedBase(seed: Long, xs: Double, ys: Double): Float {
       const dy2: Float = dy0 + (UNSKEW_2D + 1);
       const a2: Float = RSQUARED_2D - dx2 * dx2 - dy2 * dy2;
       if (a2 > 0) {
-        value +=
-          a2 * a2 * (a2 * a2) * grad2(seed, xsbp, ysbp - PRIME_Y, dx2, dy2);
+        value += a2 * a2 * (a2 * a2) * grad2(seed, xsbp, ysbp - PRIME_Y, dx2, dy2);
       }
     } else {
       const dx2: Float = dx0 - UNSKEW_2D;
       const dy2: Float = dy0 - (UNSKEW_2D + 1);
       const a2: Float = RSQUARED_2D - dx2 * dx2 - dy2 * dy2;
       if (a2 > 0) {
-        value +=
-          a2 * a2 * (a2 * a2) * grad2(seed, xsbp, ysbp + PRIME_Y, dx2, dy2);
+        value += a2 * a2 * (a2 * a2) * grad2(seed, xsbp, ysbp + PRIME_Y, dx2, dy2);
       }
     }
   }
@@ -853,12 +816,7 @@ function noise2UnskewedBase(seed: Long, xs: Double, ys: Double): Float {
  * If Z is vertical in world coordinates, call Noise3_ImproveXZ(x, y, Z).
  * For a time varied animation, call Noise3_ImproveXY(x, y, T).
  */
-export function noise3ImproveXY(
-  seed: Long,
-  x: Double,
-  y: Double,
-  z: Double,
-): Float {
+export function noise3ImproveXY(seed: Long, x: Double, y: Double, z: Double): Float {
   // Re-orient the cubic lattices without skewing, so Z points up the main lattice diagonal,
   // and the planes formed by XY are moved far out of alignment with the cube faces.
   // Orthonormal rotation. Not a skew transform.
@@ -881,12 +839,7 @@ export function noise3ImproveXY(
  * If Z is vertical in world coordinates, call Noise3_ImproveXZ(x, Z, y) or use Noise3_ImproveXY.
  * For a time varied animation, call Noise3_ImproveXZ(x, T, y) or use Noise3_ImproveXY.
  */
-export function noise3ImprovedXZ(
-  seed: Long,
-  x: Double,
-  y: Double,
-  z: Double,
-): Float {
+export function noise3ImprovedXZ(seed: Long, x: Double, y: Double, z: Double): Float {
   // Re-orient the cubic lattices without skewing, so Y points up the main lattice diagonal,
   // and the planes formed by XZ are moved far out of alignment with the cube faces.
   // Orthonormal rotation. Not a skew transform.
@@ -906,12 +859,7 @@ export function noise3ImprovedXZ(
  * Use Noise3_ImproveXY or Noise3_ImproveXZ instead, wherever appropriate.
  * They have less diagonal bias. This function's best use is as a fallback.
  */
-export function noise3Fallback(
-  seed: Long,
-  x: Double,
-  y: Double,
-  z: Double,
-): Float {
+export function noise3Fallback(seed: Long, x: Double, y: Double, z: Double): Float {
   // Re-orient the cubic lattices via rotation, to produce a familiar look.
   // Orthonormal rotation. Not a skew transform.
   const r: Double = FALLBACK_ROTATE3 * (x + y + z);
@@ -930,12 +878,7 @@ export function noise3Fallback(
  * than to build up the index with enough info to isolate 8 points.
  */
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: <explanation>
-function noise3UnrotatedBase(
-  seed: Long,
-  xr: Double,
-  yr: Double,
-  zr: Double,
-): Float {
+function noise3UnrotatedBase(seed: Long, xr: Double, yr: Double, zr: Double): Float {
   // Get base points and offsets.
   const xrb: Int = fastFloor(xr);
   const yrb: Int = fastFloor(yr);
@@ -979,11 +922,7 @@ function noise3UnrotatedBase(
   const y1: Float = yi - 0.5;
   const z1: Float = zi - 0.5;
   const a1: Float = RSQUARED_3D - x1 * x1 - y1 * y1 - z1 * z1;
-  value +=
-    a1 *
-    a1 *
-    (a1 * a1) *
-    grad3(seed2, xrbp + PRIME_X, yrbp + PRIME_Y, zrbp + PRIME_Z, x1, y1, z1);
+  value += a1 * a1 * (a1 * a1) * grad3(seed2, xrbp + PRIME_X, yrbp + PRIME_Y, zrbp + PRIME_Z, x1, y1, z1);
 
   // Shortcuts for building the remaining falloffs.
   // Derived by subtracting the polynomials with the offsets plugged in.
@@ -1043,15 +982,7 @@ function noise3UnrotatedBase(
         a4 *
         a4 *
         (a4 * a4) *
-        grad3(
-          seed2,
-          xrbp + (BigInt(xNMask) & (PRIME_X * 2n)),
-          yrbp + PRIME_Y,
-          zrbp + PRIME_Z,
-          x4,
-          y4,
-          z4,
-        );
+        grad3(seed2, xrbp + (BigInt(xNMask) & (PRIME_X * 2n)), yrbp + PRIME_Y, zrbp + PRIME_Z, x4, y4, z4);
       skip5 = true;
     }
   }
@@ -1105,15 +1036,7 @@ function noise3UnrotatedBase(
         a8 *
         a8 *
         (a8 * a8) *
-        grad3(
-          seed2,
-          xrbp + PRIME_X,
-          yrbp + (BigInt(yNMask) & (PRIME_Y << 1n)),
-          zrbp + PRIME_Z,
-          x8,
-          y8,
-          z8,
-        );
+        grad3(seed2, xrbp + PRIME_X, yrbp + (BigInt(yNMask) & (PRIME_Y << 1n)), zrbp + PRIME_Z, x8, y8, z8);
       skip9 = true;
     }
   }
@@ -1167,15 +1090,7 @@ function noise3UnrotatedBase(
         aC *
         aC *
         (aC * aC) *
-        grad3(
-          seed2,
-          xrbp + PRIME_X,
-          yrbp + PRIME_Y,
-          zrbp + (BigInt(zNMask) & (PRIME_Z << 1n)),
-          xC,
-          yC,
-          zC,
-        );
+        grad3(seed2, xrbp + PRIME_X, yrbp + PRIME_Y, zrbp + (BigInt(zNMask) & (PRIME_Z << 1n)), xC, yC, zC);
       skipD = true;
     }
   }
@@ -1255,13 +1170,7 @@ function noise3UnrotatedBase(
  * Recommended for time-varied animations which texture a 3D object (W=time)
  * in a space where Z is vertical
  */
-export function noise4ImproveXYZImproveXY(
-  seed: Long,
-  x: Double,
-  y: Double,
-  z: Double,
-  w: Double,
-): Float {
+export function noise4ImproveXYZImproveXY(seed: Long, x: Double, y: Double, z: Double, w: Double): Float {
   const xy: Double = x + y;
   const s2: Double = xy * Number("-0.21132486540518699998");
   const zz: Double = z * Number("0.28867513459481294226");
@@ -1280,13 +1189,7 @@ export function noise4ImproveXYZImproveXY(
  * Recommended for time-varied animations which texture a 3D object (W=time)
  * in a space where Y is vertical
  */
-export function noise4ImproveXYZImproveXZ(
-  seed: Long,
-  x: Double,
-  y: Double,
-  z: Double,
-  w: Double,
-): Float {
+export function noise4ImproveXYZImproveXZ(seed: Long, x: Double, y: Double, z: Double, w: Double): Float {
   const xz: Double = x + z;
   const s2: Double = xz * Number("-0.21132486540518699998");
   const yy: Double = y * Number("0.28867513459481294226");
@@ -1305,13 +1208,7 @@ export function noise4ImproveXYZImproveXZ(
  * Recommended for time-varied animations which texture a 3D object (W=time)
  * where there isn't a clear distinction between horizontal and vertical
  */
-export function noise4ImproveXYZ(
-  seed: Long,
-  x: Double,
-  y: Double,
-  z: Double,
-  w: Double,
-): Float {
+export function noise4ImproveXYZ(seed: Long, x: Double, y: Double, z: Double, w: Double): Float {
   const xyz: Double = x + y + z;
   const ww: Double = w * 1.118033988749894;
   const s2: Double = xyz * -0.16666666666666666 + ww;
@@ -1326,13 +1223,7 @@ export function noise4ImproveXYZ(
 /**
  * 4D SuperSimplex noise, fallback lattice orientation.
  */
-export function noise4Fallback(
-  seed: Long,
-  x: Double,
-  y: Double,
-  z: Double,
-  w: Double,
-): Float {
+export function noise4Fallback(seed: Long, x: Double, y: Double, z: Double, w: Double): Float {
   // Get points for A4 lattice
   const s: Double = SKEW_4D * (x + y + z + w);
   const xs: Double = x + s;
@@ -1349,13 +1240,7 @@ export function noise4Fallback(
  * This isn't as elegant or SIMD/GPU/etc. portable as other approaches,
  * but it competes performance-wise with optimized 2014 OpenSimplex.
  */
-function noise4UnskewedBase(
-  seed: Long,
-  xs: Double,
-  ys: Double,
-  zs: Double,
-  ws: Double,
-): Float {
+function noise4UnskewedBase(seed: Long, xs: Double, ys: Double, zs: Double, ws: Double): Float {
   // Get base points and offsets
   const xsb: Int = fastFloor(xs);
   const ysb: Int = fastFloor(ys);
@@ -1399,20 +1284,7 @@ function noise4UnskewedBase(
     if (a < RSQUARED_4D) {
       a -= RSQUARED_4D;
       a *= a;
-      value +=
-        a *
-        a *
-        grad4(
-          seed,
-          xsvp + c.xsvp,
-          ysvp + c.ysvp,
-          zsvp + c.zsvp,
-          wsvp + c.wsvp,
-          dx,
-          dy,
-          dz,
-          dw,
-        );
+      value += a * a * grad4(seed, xsvp + c.xsvp, ysvp + c.ysvp, zsvp + c.zsvp, wsvp + c.wsvp, dx, dy, dz, dw);
     }
   }
   return value;
