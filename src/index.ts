@@ -1,8 +1,8 @@
-import { UniversalCamera } from "@babylonjs/core";
+import { UniversalCamera } from "@babylonjs/core/Cameras/universalCamera";
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
-import "@babylonjs/core/Loading/loadingScreen";
 import { Texture } from "@babylonjs/core/Materials/Textures/texture";
+import type { Material } from "@babylonjs/core/Materials/material";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
@@ -20,6 +20,91 @@ import McNormalTexture from "./assets/babylon-mc-normal.png";
 import McTexture from "./assets/babylon-mc-texture.png";
 import { noise2ImproveX } from "./util/simplexNoise2S";
 
+class VoxelWorld {
+  public readonly baseSeed: bigint;
+  public readonly chunkMap: Map<string, VoxelWorldChunk>;
+
+  public constructor(baseSeed: bigint, chunkMap: Map<string, VoxelWorldChunk>) {
+    this.baseSeed = baseSeed;
+    this.chunkMap = chunkMap;
+  }
+
+  public getVoxel(worldX: number, worldY: number, worldZ: number): Voxel | undefined {
+    const CHUNK_SIZE = 32;
+    const chunkX = Math.floor(worldX / CHUNK_SIZE);
+    const chunkZ = Math.floor(worldZ / CHUNK_SIZE);
+    const chunk = this.chunkMap.get(`${chunkX},${chunkZ}`);
+    if (!chunk) {
+      return undefined;
+    }
+    return chunk.voxelMap.get(`${worldX},${worldY},${worldZ}`);
+  }
+
+  public getAllPresentVoxelListByChunk(chunkX: number, chunkZ: number): Voxel[] {
+    const chunk = this.chunkMap.get(`${chunkX},${chunkZ}`);
+    if (!chunk) {
+      return [];
+    }
+    const voxelList: Voxel[] = [];
+    for (const voxel of chunk.voxelMap.values()) {
+      voxelList.push(voxel);
+    }
+    return voxelList;
+  }
+}
+
+class VoxelWorldChunk {
+  public readonly chunkX: number;
+  public readonly chunkZ: number;
+  public readonly voxelMap: Map<string, Voxel>;
+
+  public constructor(chunkX: number, chunkZ: number, voxelMap: Map<string, Voxel>) {
+    this.chunkX = chunkX;
+    this.chunkZ = chunkZ;
+    this.voxelMap = voxelMap;
+  }
+
+  public getId(): string {
+    return `${this.chunkX},${this.chunkZ}`;
+  }
+}
+
+class Voxel {
+  public readonly worldX: number;
+  public readonly worldY: number;
+  public readonly worldZ: number;
+  private voxelType: number;
+
+  public constructor(worldX: number, worldY: number, worldZ: number, voxelType: number) {
+    this.worldX = worldX;
+    this.worldY = worldY;
+    this.worldZ = worldZ;
+    this.voxelType = voxelType;
+  }
+
+  public getVoxelType(): number {
+    return this.voxelType;
+  }
+
+  public getId(): string {
+    return `${this.worldX},${this.worldY},${this.worldZ}`;
+  }
+
+  /**
+   * [Top, Bottom, Left, Right, Front, Back]
+   */
+  public getNeighbors(voxelWorld: VoxelWorld): Array<Voxel | undefined> {
+    return [
+      voxelWorld.getVoxel(this.worldX, this.worldY + 1, this.worldZ),
+      voxelWorld.getVoxel(this.worldX, this.worldY - 1, this.worldZ),
+      voxelWorld.getVoxel(this.worldX - 1, this.worldY, this.worldZ),
+      voxelWorld.getVoxel(this.worldX + 1, this.worldY, this.worldZ),
+      voxelWorld.getVoxel(this.worldX, this.worldY, this.worldZ - 1),
+      voxelWorld.getVoxel(this.worldX, this.worldY, this.worldZ + 1),
+    ];
+  }
+}
+
 async function main() {
   const canvas = document.getElementById("render-canvas") as HTMLCanvasElement | null;
   if (!canvas) {
@@ -27,7 +112,6 @@ async function main() {
   }
 
   const engine = new Engine(canvas, true, {}, true);
-  engine.displayLoadingUI();
   const scene = new Scene(engine);
   // scene.fogMode = Scene.FOGMODE_EXP2;
   // scene.fogDensity = 0.015;
@@ -36,10 +120,16 @@ async function main() {
   const light = new DirectionalLight("SunLight", new Vector3(0, -0.67, 0.34), scene);
   light.intensity = 1;
 
-  createCamera(scene);
+  const camera = createCamera(scene);
   createRenderingPipelines(scene);
   createSky(scene);
-  createVoxelWorld(scene);
+  const voxelWorld = new VoxelWorld(0n, new Map());
+  const voxelMaterial = createVoxelMaterial(scene);
+  // biome-ignore lint/suspicious/useAwait: <explanation>
+  const update = async () => {
+    updateVoxelWorldChunks(scene, voxelMaterial, voxelWorld, camera.globalPosition.x, camera.globalPosition.z);
+  };
+  scene.onBeforeRenderObservable.add(update);
 
   function render() {
     scene.render();
@@ -49,12 +139,11 @@ async function main() {
   }
   window.addEventListener("resize", resize);
   engine.runRenderLoop(render);
-  engine.hideLoadingUI();
 }
 
 main();
 
-function createCamera(scene: Scene): void {
+function createCamera(scene: Scene) {
   const camera = new UniversalCamera("Camera", new Vector3(0, 2, 0), scene);
   camera.attachControl(true);
   camera.maxZ = 1024;
@@ -62,13 +151,14 @@ function createCamera(scene: Scene): void {
   camera.keysRight = ["D".charCodeAt(0)];
   camera.keysUp = ["W".charCodeAt(0)];
   camera.keysDown = ["S".charCodeAt(0)];
-  camera.speed = 0.2;
+  camera.speed = 0.5;
   scene.onBeforeRenderObservable.add(() => {
     if (camera.position.y < -10) {
       // Reset camera position
       camera.position = new Vector3(0, 2, 0);
     }
   });
+  return camera;
 }
 
 function createRenderingPipelines(scene: Scene): void {
@@ -104,156 +194,221 @@ function createSky(scene: Scene) {
   skyBox.material = skyMaterial;
 }
 
-function createVoxelWorld(scene: Scene) {
-  const mesh = new Mesh("Voxel", scene);
-  createFacetVertexData(0).applyToMesh(mesh);
-  const mat = new StandardMaterial("mat", scene);
-  mat.useLogarithmicDepth = true;
-  mat.diffuseTexture = new Texture(McTexture, scene, {
-    noMipmap: false,
-    samplingMode: Texture.TRILINEAR_SAMPLINGMODE,
-  });
-  mat.bumpTexture = new Texture(McNormalTexture, scene, {
-    noMipmap: false,
-    samplingMode: Texture.TRILINEAR_SAMPLINGMODE,
-  });
-  mat.specularColor = new Color3(0, 0, 0);
-  mesh.material = mat;
+async function updateVoxelWorldChunks(
+  scene: Scene,
+  material: Material,
+  voxelWorld: VoxelWorld,
+  cameraX: number,
+  cameraZ: number,
+) {
+  // Around 4x4 chunks will be loaded
+  const CHUNK_RADIUS = 4;
+  const TILE_SIZE = 0.5;
+  const CHUNK_SIZE = 32 * TILE_SIZE;
+
+  const minChunkX = Math.floor((cameraX - CHUNK_SIZE * CHUNK_RADIUS) / CHUNK_SIZE);
+  const maxChunkX = Math.floor((cameraX + CHUNK_SIZE * CHUNK_RADIUS) / CHUNK_SIZE);
+  const minChunkZ = Math.floor((cameraZ - CHUNK_SIZE * CHUNK_RADIUS) / CHUNK_SIZE);
+  const maxChunkZ = Math.floor((cameraZ + CHUNK_SIZE * CHUNK_RADIUS) / CHUNK_SIZE);
+
+  const promises = [];
+
+  // dispose out of range meshes
+  for (const chunk of voxelWorld.chunkMap.values()) {
+    promises.push(
+      new Promise<void>((resolve) => {
+        if (
+          chunk.chunkX < minChunkX ||
+          chunk.chunkX > maxChunkX ||
+          chunk.chunkZ < minChunkZ ||
+          chunk.chunkZ > maxChunkZ
+        ) {
+          const mesh = scene.getMeshByName(`CHUNK_${chunk.chunkX},${chunk.chunkZ}`);
+          if (mesh) {
+            mesh.dispose();
+          }
+        }
+        resolve();
+      }),
+    );
+  }
+
+  // create within meshes
+  for (let chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
+    for (let chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++) {
+      promises.push(
+        new Promise<void>((resolve) => {
+          if (!voxelWorld.chunkMap.has(`${chunkX},${chunkZ}`)) {
+            // Create chunk data
+            const chunk = createChunk(chunkX, chunkZ, voxelWorld.baseSeed);
+            voxelWorld.chunkMap.set(chunk.getId(), chunk);
+          }
+          if (!scene.getMeshByName(`CHUNK_${chunkX},${chunkZ}`)) {
+            // Create mesh
+            const mesh = createMeshByChunk(scene, voxelWorld, chunkX, chunkZ);
+            mesh.material = material;
+          }
+          resolve();
+        }),
+      );
+    }
+  }
+
+  return Promise.all(promises);
 }
 
-function createFacetVertexData(seed: number) {
-  const rng = xoroshiro128plus(seed);
-  const seedBigInt = BigInt(seed);
-  const size = 0.5;
-  const tileSize = 512;
-  const height = 10;
-  const offset = size * tileSize * 0.5;
+function createChunk(chunkX: number, chunkZ: number, seed: bigint) {
+  const CHUNK_SIZE = 32;
+  const voxelMap = new Map<string, Voxel>();
+
+  for (let localX = 0; localX < CHUNK_SIZE; localX++) {
+    for (let localZ = 0; localZ < CHUNK_SIZE; localZ++) {
+      const worldX = localX + chunkX * CHUNK_SIZE;
+      const worldZ = localZ + chunkZ * CHUNK_SIZE;
+
+      // create surface
+      const surface = createSurface(worldX, worldZ, seed);
+      voxelMap.set(surface.getId(), surface);
+
+      // create ground
+      for (let worldY = surface.worldY - 1; worldY >= -1; worldY--) {
+        const VOXEL_TYPE_BARK = 1;
+        const voxel = new Voxel(worldX, worldY, worldZ, VOXEL_TYPE_BARK);
+        voxelMap.set(voxel.getId(), voxel);
+      }
+    }
+  }
+
+  return new VoxelWorldChunk(chunkX, chunkZ, voxelMap);
+}
+
+function createSurface(worldX: number, worldZ: number, seed: bigint) {
+  const MAX_HEIGHT = 10;
+  const WAVE = 128;
+  const worldY = Math.floor(noise2ImproveX(seed, worldX / WAVE, worldZ / WAVE) * MAX_HEIGHT);
+  const VOXEL_TYPE_GRASS = 0;
+  return new Voxel(worldX, worldY, worldZ, VOXEL_TYPE_GRASS);
+}
+
+function createVoxelMaterial(scene: Scene) {
+  const material = new StandardMaterial("VoxelMaterial", scene);
+  material.useLogarithmicDepth = true;
+  material.diffuseTexture = new Texture(McTexture, scene, {
+    noMipmap: false,
+    samplingMode: Texture.TRILINEAR_SAMPLINGMODE,
+  });
+  material.bumpTexture = new Texture(McNormalTexture, scene, {
+    noMipmap: false,
+    samplingMode: Texture.TRILINEAR_SAMPLINGMODE,
+  });
+  material.specularColor = new Color3(0, 0, 0);
+  material.freeze();
+  return material;
+}
+
+function createMeshByChunk(scene: Scene, voxelWorld: VoxelWorld, chunkX: number, chunkZ: number) {
+  const voxelList = voxelWorld.getAllPresentVoxelListByChunk(chunkX, chunkZ);
+  const mesh = new Mesh(`CHUNK_${chunkX},${chunkZ}`, scene);
+  const rawVertexData = createVertexDataFromVoxelList(voxelList, voxelWorld);
   const vertexData = new VertexData();
+  vertexData.positions = rawVertexData.positions;
+  vertexData.indices = rawVertexData.indices;
+  vertexData.normals = rawVertexData.normals;
+  vertexData.uvs = rawVertexData.uvs;
+  const updatable = false; // TODO
+  vertexData.applyToMesh(mesh, updatable);
+  mesh.freezeNormals();
+  mesh.freezeWorldMatrix();
+  return mesh;
+}
+
+function createVertexDataFromVoxelList(voxelList: Voxel[], voxelWorld: VoxelWorld) {
+  const VOXEL_SIZE = 0.5;
   const positions: number[] = [];
   const indices: number[] = [];
   const normals: number[] = [];
   const uvs: number[] = [];
   let indexBase = 0;
 
-  for (let x = 0; x < tileSize; x++) {
-    for (let z = 0; z < tileSize; z++) {
-      const textureId = unsafeUniformIntDistribution(0, 1, rng);
-      const y = Math.floor(noise2ImproveX(seedBigInt, x / tileSize, z / tileSize) * height);
-      positions.push(
-        x * size - offset,
-        y * size,
-        z * size - offset,
-        x * size + size - offset,
-        y * size,
-        z * size + size - offset,
-        x * size - offset,
-        y * size,
-        z * size + size - offset,
-        x * size + size - offset,
-        y * size,
-        z * size - offset,
-      );
+  for (const voxel of voxelList) {
+    const rng = xoroshiro128plus(Number(voxelWorld.baseSeed) + voxel.worldX + voxel.worldY + voxel.worldZ);
+    // biome-ignore format: <explanation>
+    const vertices = [
+      [voxel.worldX * VOXEL_SIZE,              voxel.worldY * VOXEL_SIZE,              voxel.worldZ * VOXEL_SIZE],
+      [voxel.worldX * VOXEL_SIZE + VOXEL_SIZE, voxel.worldY * VOXEL_SIZE,              voxel.worldZ * VOXEL_SIZE + VOXEL_SIZE],
+      [voxel.worldX * VOXEL_SIZE,              voxel.worldY * VOXEL_SIZE,              voxel.worldZ * VOXEL_SIZE + VOXEL_SIZE],
+      [voxel.worldX * VOXEL_SIZE + VOXEL_SIZE, voxel.worldY * VOXEL_SIZE,              voxel.worldZ * VOXEL_SIZE],
+      [voxel.worldX * VOXEL_SIZE + VOXEL_SIZE, voxel.worldY * VOXEL_SIZE - VOXEL_SIZE, voxel.worldZ * VOXEL_SIZE],
+      [voxel.worldX * VOXEL_SIZE,              voxel.worldY * VOXEL_SIZE - VOXEL_SIZE, voxel.worldZ * VOXEL_SIZE + VOXEL_SIZE],
+      [voxel.worldX * VOXEL_SIZE + VOXEL_SIZE, voxel.worldY * VOXEL_SIZE - VOXEL_SIZE, voxel.worldZ * VOXEL_SIZE + VOXEL_SIZE],
+      [voxel.worldX * VOXEL_SIZE,              voxel.worldY * VOXEL_SIZE - VOXEL_SIZE, voxel.worldZ * VOXEL_SIZE],
+    ];
+    // biome-ignore format: <explanation>
+    const vertexNormals = [
+      [ 0,  1,  0],
+      [ 0, -1,  0],
+      [-1,  0,  0],
+      [ 1,  0,  0],
+      [ 0,  0, -1],
+      [ 0,  0,  1],
+    ];
+    const neighbors = voxel.getNeighbors(voxelWorld);
+    if (!neighbors[0]) {
+      // Render top
+      positions.push(...vertices[0], ...vertices[1], ...vertices[2], ...vertices[3]);
       indices.push(indexBase, indexBase + 1, indexBase + 2, indexBase, indexBase + 3, indexBase + 1);
       indexBase += 4;
-      normals.push(0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0);
-      uvs.push(...generateUV(textureId, rng));
-      const XPlusY = Math.floor(noise2ImproveX(seedBigInt, (x + 1) / tileSize, z / tileSize) * height);
-      if (XPlusY < y) {
-        // render X+
-        positions.push(
-          x * size + size - offset,
-          y * size - size,
-          z * size - offset,
-          x * size + size - offset,
-          y * size,
-          z * size + size - offset,
-          x * size + size - offset,
-          y * size,
-          z * size - offset,
-          x * size + size - offset,
-          y * size - size,
-          z * size + size - offset,
-        );
-        indices.push(indexBase, indexBase + 1, indexBase + 2, indexBase, indexBase + 3, indexBase + 1);
-        indexBase += 4;
-        normals.push(1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0);
-        uvs.push(...generateUV(textureId, rng));
-      }
-      const XMinusY = Math.floor(noise2ImproveX(seedBigInt, (x - 1) / tileSize, z / tileSize) * height);
-      if (XMinusY < y) {
-        // render X-
-        positions.push(
-          x * size - offset,
-          y * size,
-          z * size - offset,
-          x * size - offset,
-          y * size - size,
-          z * size + size - offset,
-          x * size - offset,
-          y * size - size,
-          z * size - offset,
-          x * size - offset,
-          y * size,
-          z * size + size - offset,
-        );
-        indices.push(indexBase, indexBase + 1, indexBase + 2, indexBase, indexBase + 3, indexBase + 1);
-        indexBase += 4;
-        normals.push(-1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0);
-        uvs.push(...generateUV(textureId, rng));
-      }
-      const ZPlusY = Math.floor(noise2ImproveX(seedBigInt, x / tileSize, (z + 1) / tileSize) * height);
-      if (ZPlusY < y) {
-        // render Z+
-        positions.push(
-          x * size - offset,
-          y * size - size,
-          z * size + size - offset,
-          x * size + size - offset,
-          y * size,
-          z * size + size - offset,
-          x * size + size - offset,
-          y * size - size,
-          z * size + size - offset,
-          x * size - offset,
-          y * size,
-          z * size + size - offset,
-        );
-        indices.push(indexBase, indexBase + 1, indexBase + 2, indexBase, indexBase + 3, indexBase + 1);
-        indexBase += 4;
-        normals.push(0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1);
-        uvs.push(...generateUV(textureId, rng));
-      }
-      const ZMinusY = Math.floor(noise2ImproveX(seedBigInt, x / tileSize, (z - 1) / tileSize) * height);
-      if (ZMinusY < y) {
-        // render Z-
-        positions.push(
-          x * size - offset,
-          y * size,
-          z * size - offset,
-          x * size + size - offset,
-          y * size - size,
-          z * size - offset,
-          x * size + size - offset,
-          y * size,
-          z * size - offset,
-          x * size - offset,
-          y * size - size,
-          z * size - offset,
-        );
-        indices.push(indexBase, indexBase + 1, indexBase + 2, indexBase, indexBase + 3, indexBase + 1);
-        indexBase += 4;
-        normals.push(0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1);
-        uvs.push(...generateUV(textureId, rng));
-      }
+      normals.push(...vertexNormals[0], ...vertexNormals[0], ...vertexNormals[0], ...vertexNormals[0]);
+      uvs.push(...generateUV(voxel.getVoxelType(), rng));
+    }
+    if (!neighbors[1]) {
+      // Render bottom
+      positions.push(...vertices[4], ...vertices[5], ...vertices[6], ...vertices[7]);
+      indices.push(indexBase, indexBase + 1, indexBase + 2, indexBase, indexBase + 3, indexBase + 1);
+      indexBase += 4;
+      normals.push(...vertexNormals[1], ...vertexNormals[1], ...vertexNormals[1], ...vertexNormals[1]);
+      uvs.push(...generateUV(voxel.getVoxelType(), rng));
+    }
+    if (!neighbors[2]) {
+      // Render left
+      positions.push(...vertices[2], ...vertices[7], ...vertices[0], ...vertices[5]);
+      indices.push(indexBase, indexBase + 1, indexBase + 2, indexBase, indexBase + 3, indexBase + 1);
+      indexBase += 4;
+      normals.push(...vertexNormals[2], ...vertexNormals[2], ...vertexNormals[2], ...vertexNormals[2]);
+      uvs.push(...generateUV(voxel.getVoxelType(), rng));
+    }
+    if (!neighbors[3]) {
+      // Render right
+      positions.push(...vertices[3], ...vertices[6], ...vertices[1], ...vertices[4]);
+      indices.push(indexBase, indexBase + 1, indexBase + 2, indexBase, indexBase + 3, indexBase + 1);
+      indexBase += 4;
+      normals.push(...vertexNormals[3], ...vertexNormals[3], ...vertexNormals[3], ...vertexNormals[3]);
+      uvs.push(...generateUV(voxel.getVoxelType(), rng));
+    }
+    if (!neighbors[4]) {
+      // Render front
+      positions.push(...vertices[0], ...vertices[4], ...vertices[3], ...vertices[7]);
+      indices.push(indexBase, indexBase + 1, indexBase + 2, indexBase, indexBase + 3, indexBase + 1);
+      indexBase += 4;
+      normals.push(...vertexNormals[4], ...vertexNormals[4], ...vertexNormals[4], ...vertexNormals[4]);
+      uvs.push(...generateUV(voxel.getVoxelType(), rng));
+    }
+    if (!neighbors[5]) {
+      // Render back
+      positions.push(...vertices[1], ...vertices[5], ...vertices[2], ...vertices[6]);
+      indices.push(indexBase, indexBase + 1, indexBase + 2, indexBase, indexBase + 3, indexBase + 1);
+      indexBase += 4;
+      normals.push(...vertexNormals[5], ...vertexNormals[5], ...vertexNormals[5], ...vertexNormals[5]);
+      uvs.push(...generateUV(voxel.getVoxelType(), rng));
     }
   }
 
-  vertexData.positions = positions;
-  vertexData.indices = indices;
-  vertexData.normals = normals;
-  vertexData.uvs = uvs;
-
-  return vertexData;
+  return {
+    positions,
+    indices,
+    normals,
+    uvs,
+  };
 }
 
 function generateUV(textureId: number, rng: RandomGenerator): number[] {
@@ -262,7 +417,7 @@ function generateUV(textureId: number, rng: RandomGenerator): number[] {
 
 function generateUV2(textureId: number, rotation: number): number[] {
   const textureSize = 16;
-  const jitter = 0 / 16;
+  const jitter = 1 / 1024;
   const u0 = 0 + (textureId % textureSize) / textureSize + jitter;
   const u1 = 0 + (1 + (textureId % textureSize)) / textureSize - jitter;
   const v0 = 1 - Math.floor(textureId / textureSize) / textureSize - jitter;
