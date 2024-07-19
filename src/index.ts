@@ -19,91 +19,9 @@ import { type RandomGenerator, unsafeUniformIntDistribution, xoroshiro128plus } 
 import McNormalTexture from "./assets/babylon-mc-normal.png";
 import McTexture from "./assets/babylon-mc-texture.png";
 import { noise2ImproveX } from "./util/simplexNoise2S";
-
-class VoxelWorld {
-  public readonly baseSeed: bigint;
-  public readonly chunkMap: Map<string, VoxelWorldChunk>;
-
-  public constructor(baseSeed: bigint, chunkMap: Map<string, VoxelWorldChunk>) {
-    this.baseSeed = baseSeed;
-    this.chunkMap = chunkMap;
-  }
-
-  public getVoxel(worldX: number, worldY: number, worldZ: number): Voxel | undefined {
-    const CHUNK_SIZE = 32;
-    const chunkX = Math.floor(worldX / CHUNK_SIZE);
-    const chunkZ = Math.floor(worldZ / CHUNK_SIZE);
-    const chunk = this.chunkMap.get(`${chunkX},${chunkZ}`);
-    if (!chunk) {
-      return undefined;
-    }
-    return chunk.voxelMap.get(`${worldX},${worldY},${worldZ}`);
-  }
-
-  public getAllPresentVoxelListByChunk(chunkX: number, chunkZ: number): Voxel[] {
-    const chunk = this.chunkMap.get(`${chunkX},${chunkZ}`);
-    if (!chunk) {
-      return [];
-    }
-    const voxelList: Voxel[] = [];
-    for (const voxel of chunk.voxelMap.values()) {
-      voxelList.push(voxel);
-    }
-    return voxelList;
-  }
-}
-
-class VoxelWorldChunk {
-  public readonly chunkX: number;
-  public readonly chunkZ: number;
-  public readonly voxelMap: Map<string, Voxel>;
-
-  public constructor(chunkX: number, chunkZ: number, voxelMap: Map<string, Voxel>) {
-    this.chunkX = chunkX;
-    this.chunkZ = chunkZ;
-    this.voxelMap = voxelMap;
-  }
-
-  public getId(): string {
-    return `${this.chunkX},${this.chunkZ}`;
-  }
-}
-
-class Voxel {
-  public readonly worldX: number;
-  public readonly worldY: number;
-  public readonly worldZ: number;
-  private voxelType: number;
-
-  public constructor(worldX: number, worldY: number, worldZ: number, voxelType: number) {
-    this.worldX = worldX;
-    this.worldY = worldY;
-    this.worldZ = worldZ;
-    this.voxelType = voxelType;
-  }
-
-  public getVoxelType(): number {
-    return this.voxelType;
-  }
-
-  public getId(): string {
-    return `${this.worldX},${this.worldY},${this.worldZ}`;
-  }
-
-  /**
-   * [Top, Bottom, Left, Right, Front, Back]
-   */
-  public getNeighbors(voxelWorld: VoxelWorld): Array<Voxel | undefined> {
-    return [
-      voxelWorld.getVoxel(this.worldX, this.worldY + 1, this.worldZ),
-      voxelWorld.getVoxel(this.worldX, this.worldY - 1, this.worldZ),
-      voxelWorld.getVoxel(this.worldX - 1, this.worldY, this.worldZ),
-      voxelWorld.getVoxel(this.worldX + 1, this.worldY, this.worldZ),
-      voxelWorld.getVoxel(this.worldX, this.worldY, this.worldZ - 1),
-      voxelWorld.getVoxel(this.worldX, this.worldY, this.worldZ + 1),
-    ];
-  }
-}
+import { VoxelWorld } from "./voxels/voxelWorld";
+import { Voxel } from "./voxels/voxel";
+import { VoxelWorldChunk } from "./voxels/voxelWorldChunk";
 
 async function main() {
   const canvas = document.getElementById("render-canvas") as HTMLCanvasElement | null;
@@ -111,11 +29,12 @@ async function main() {
     throw new Error("Canvas not found");
   }
 
+  const seed = 0n;
+  const voxelWorld = new VoxelWorld(seed, new Map());
   const engine = new Engine(canvas, true, {}, true);
   const scene = new Scene(engine);
   // scene.fogMode = Scene.FOGMODE_EXP2;
   // scene.fogDensity = 0.015;
-  // scene.gravity = new Vector3(0, -0.871, 0);
 
   const light = new DirectionalLight("SunLight", new Vector3(0, -0.67, 0.34), scene);
   light.intensity = 1;
@@ -123,7 +42,6 @@ async function main() {
   const camera = createCamera(scene);
   createRenderingPipelines(scene);
   createSky(scene);
-  const voxelWorld = new VoxelWorld(0n, new Map());
   const voxelMaterial = createVoxelMaterial(scene);
   // biome-ignore lint/suspicious/useAwait: <explanation>
   const update = async () => {
@@ -144,20 +62,15 @@ async function main() {
 main();
 
 function createCamera(scene: Scene) {
-  const camera = new UniversalCamera("Camera", new Vector3(0, 2, 0), scene);
+  const camera = new UniversalCamera("Camera", new Vector3(0, 10, 0), scene);
   camera.attachControl(true);
+  camera.ellipsoid = new Vector3(0.9, 1.4, 0.9);
   camera.maxZ = 1024;
   camera.keysLeft = ["A".charCodeAt(0)];
   camera.keysRight = ["D".charCodeAt(0)];
   camera.keysUp = ["W".charCodeAt(0)];
   camera.keysDown = ["S".charCodeAt(0)];
   camera.speed = 0.5;
-  scene.onBeforeRenderObservable.add(() => {
-    if (camera.position.y < -10) {
-      // Reset camera position
-      camera.position = new Vector3(0, 2, 0);
-    }
-  });
   return camera;
 }
 
